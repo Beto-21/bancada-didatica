@@ -1,0 +1,510 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IHM – Bancada Didática</title>
+<style>
+  :root{
+    --bg:#eef1f5; --panel:#ffffff; --ink:#1d2733; --muted:#6a7685; --line:#d5dbe3;
+    --accent:#1f5fa8; --ok:#2e8b57; --warn:#d98c1a; --bad:#c0392b;
+    --water:#4aa3df; --water2:#2b7fbf; --steel:#9aa7b5; --hot:#e74c3c;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.4 "Segoe UI",Arial,sans-serif}
+  header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 16px;background:#16324f;color:#fff}
+  header h1{font-size:17px;margin:0 12px 0 0;font-weight:600}
+  .btn{border:1px solid var(--line);background:#fff;color:var(--ink);padding:6px 12px;border-radius:6px;cursor:pointer;font:inherit}
+  .btn:hover{border-color:var(--accent)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.danger{background:var(--bad);border-color:var(--bad);color:#fff}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  header .btn{border-color:#fff3}
+  .pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:99px;background:#ffffff1a;font-size:13px}
+  .dot{width:9px;height:9px;border-radius:50%;background:#888}
+  .dot.on{background:#3ddc84}.dot.off{background:#e74c3c}.dot.sim{background:#f1c40f}
+  .spacer{flex:1}
+  nav{display:flex;gap:2px;padding:0 16px;background:#fff;border-bottom:1px solid var(--line)}
+  nav button{border:0;background:none;padding:10px 16px;font:inherit;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent}
+  nav button.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+  main{padding:16px}
+  .tab{display:none}.tab.active{display:block}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;position:relative;overflow:hidden}
+  .card h2{font-size:15px;margin:0 0 2px;display:flex;align-items:center;gap:8px}
+  .card .sub{color:var(--muted);font-size:12px;margin-bottom:8px}
+  .badge{font-size:11px;padding:2px 8px;border-radius:99px;background:#eee;color:#555;font-weight:600}
+  .badge.on{background:#e3f5ea;color:var(--ok)}.badge.off{background:#fbe7e5;color:var(--bad)}
+  .readout{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}
+  .readout div{background:#f6f8fa;border-radius:8px;padding:6px 8px}
+  .readout b{display:block;font-size:18px}
+  .readout span{font-size:11px;color:var(--muted)}
+  .card.offline svg{filter:grayscale(1);opacity:.45}
+  .offmsg{display:none;position:absolute;left:0;right:0;top:45%;text-align:center;font-weight:700;color:var(--bad)}
+  .card.offline .offmsg{display:block}
+  /* modo demonstracao: indicado pelo selo "Demonstração (dados simulados)" no topo e pelo botao */
+
+  svg{display:block;width:100%;height:auto}
+  .flow{stroke-dasharray:6 6;animation:flow 0.6s linear infinite}
+  @keyframes flow{to{stroke-dashoffset:-12}}
+  .fan{transform-origin:50% 50%;transform-box:fill-box}
+  .spin{animation:spin var(--dur,1s) linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .chartwrap{position:relative}
+  canvas{width:100%;height:220px;display:block;background:#fff}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}
+  input[type=number]{width:90px;padding:6px;border:1px solid var(--line);border-radius:6px;font:inherit}
+  table{width:100%;border-collapse:collapse;background:#fff}
+  th,td{padding:8px;border-bottom:1px solid var(--line);text-align:left}
+  th{background:#f6f8fa;font-weight:600}
+  #log{width:100%;height:220px;font:12px/1.35 Consolas,monospace;background:#0f1720;color:#cde;border-radius:8px;padding:8px;overflow:auto;white-space:pre}
+  .note{color:var(--muted);font-size:12px}
+  .legend{display:flex;gap:14px;font-size:12px;color:var(--muted);margin-bottom:4px}
+  .legend i{display:inline-block;width:18px;height:3px;vertical-align:middle;margin-right:4px}
+</style>
+</head>
+<body>
+<header>
+  <h1>IHM – Bancada Didática de Controle</h1>
+  <button class="btn primary" id="btnCon">Conectar ao mestre</button>
+  <span class="pill"><span class="dot" id="dotCon"></span><span id="txtCon">Desconectado</span></span>
+  <span class="spacer"></span>
+  <button class="btn" id="btnSim" title="Gera dados simulados pela própria IHM, apenas para apresentar e testar a interface sem a bancada">Modo demonstração (dados simulados)</button>
+  <button class="btn" id="btnCsv">Exportar dados (CSV)</button>
+</header>
+<nav>
+  <button class="active" data-tab="sup">Supervisório</button>
+  <button data-tab="graf">Gráficos</button>
+  <button data-tab="cmd">Comandos</button>
+  <button data-tab="diag">Diagnóstico</button>
+</nav>
+
+<main>
+<!-- ===================== SUPERVISÓRIO ===================== -->
+<section class="tab active" id="tab-sup">
+  <div class="grid">
+    <div class="card offline" id="card1">
+      <h2>Planta de Posição <span class="badge" id="bd1">ESCRAVO 1</span></h2>
+      <div class="sub">Altura do centro da bola na régua (0 na base, 30 cm no topo) – sensor no topo e <i>cooler</i> na base</div>
+      <svg viewBox="0 0 300 300" id="svg1">
+        <rect x="120" y="20" width="60" height="230" rx="4" fill="#eaf3fb" stroke="#7d8fa3" stroke-width="2"/>
+        <rect x="132" y="8" width="36" height="12" rx="2" fill="#566" /><text x="150" y="17" font-size="7" fill="#fff" text-anchor="middle">HC-SR04</text>
+        <line id="sp1" x1="112" x2="188" y1="100" y2="100" stroke="var(--bad)" stroke-width="2" stroke-dasharray="5 4"/>
+        <text id="sp1t" x="192" y="104" font-size="11" fill="var(--bad)">SP</text>
+        <circle id="ball" cx="150" cy="200" r="20" fill="#fafafa" stroke="#999" stroke-width="2"/>
+        <g transform="translate(150 268)">
+          <rect x="-40" y="-14" width="80" height="28" rx="4" fill="#3b4652"/>
+          <g id="fan" class="fan"><circle r="11" fill="#9aa7b5"/>
+            <path d="M0 0 L0 -11 A11 11 0 0 1 9 -6 Z M0 0 L9 6 A11 11 0 0 1 -1 11 Z M0 0 L-9 5 A11 11 0 0 1 -8 -7 Z" fill="#2c3540"/></g>
+        </g>
+        <text x="40" y="272" font-size="11" fill="var(--muted)">Cooler</text>
+        <g font-size="10" fill="var(--muted)" id="scale1"></g>
+      </svg>
+      <div class="offmsg">SEM COMUNICAÇÃO</div>
+      <div class="readout">
+        <div><span>Altura</span><b id="pv1">--</b></div>
+        <div><span>Set point</span><b id="spv1">--</b></div>
+        <div><span>Cooler</span><b id="u1">--</b></div>
+      </div>
+    </div>
+
+    <div class="card offline" id="card2">
+      <h2>Planta de Nível <span class="badge" id="bd2">ESCRAVO 2</span></h2>
+      <div class="sub">Bomba de enchimento pelo fundo e torneira manual de saída (fluxo contínuo)</div>
+      <svg viewBox="0 0 300 300" id="svg2">
+        <!-- reservatório -->
+        <rect x="20" y="250" width="260" height="40" rx="3" fill="#d7ecf9" stroke="#7d8fa3" stroke-width="2"/>
+        <text x="150" y="275" font-size="11" fill="var(--muted)" text-anchor="middle">Reservatório</text>
+        <!-- tanque -->
+        <rect x="95" y="40" width="110" height="180" fill="#f4f9fd" stroke="#7d8fa3" stroke-width="2"/>
+        <rect id="water2" x="97" y="218" width="106" height="0" fill="var(--water)"/>
+        <line id="sp2" x1="88" x2="212" y1="120" y2="120" stroke="var(--bad)" stroke-width="2" stroke-dasharray="5 4"/>
+        <text id="sp2t" x="214" y="124" font-size="11" fill="var(--bad)">SP</text>
+        <g font-size="10" fill="var(--muted)" id="scale2"></g>
+        <rect x="140" y="28" width="20" height="10" rx="2" fill="#566"/>
+        <!-- enchimento -->
+        <path d="M45 250 V210 H95" fill="none" stroke="#7d8fa3" stroke-width="6"/>
+        <path id="flowIn" d="M45 250 V210 H95" fill="none" stroke="var(--water2)" stroke-width="3" class=""/>
+        <g transform="translate(45 230)"><circle r="13" fill="#fff" stroke="#3b4652" stroke-width="2"/><path id="pumpIn" d="M-6 6 L0 -7 L6 6 Z" fill="#9aa7b5"/></g>
+        <text x="8" y="200" font-size="10" fill="var(--muted)">Enchimento</text>
+        <!-- torneira de saída (manual) -->
+        <path d="M205 210 H255 V250" fill="none" stroke="#7d8fa3" stroke-width="6"/>
+        <path id="flowOut" d="M205 210 H255 V250" fill="none" stroke="var(--water2)" stroke-width="3"/>
+        <g transform="translate(232 210)"><rect x="-9" y="-9" width="18" height="18" rx="3" fill="#fff" stroke="#3b4652" stroke-width="2"/>
+          <path d="M-6 -6 L6 6 M-6 6 L6 -6" stroke="#3b4652" stroke-width="2"/><line x1="0" y1="-9" x2="0" y2="-18" stroke="#3b4652" stroke-width="2"/><line x1="-7" y1="-18" x2="7" y2="-18" stroke="#3b4652" stroke-width="3"/></g>
+        <text x="214" y="182" font-size="10" fill="var(--muted)">Torneira</text>
+      </svg>
+      <div class="offmsg">SEM COMUNICAÇÃO</div>
+      <div class="readout">
+        <div><span>Nível</span><b id="pv2">--</b></div>
+        <div><span>Set point</span><b id="spv2">--</b></div>
+        <div><span>Bomba enchimento</span><b id="u2">--</b></div>
+      </div>
+    </div>
+
+    <div class="card offline" id="card3">
+      <h2>Planta de Temperatura <span class="badge" id="bd3">ESCRAVO 3</span></h2>
+      <div class="sub">Ebulidores, termômetro, bomba de enchimento (superior) e de esvaziamento (inferior)</div>
+      <svg viewBox="0 0 300 300" id="svg3">
+        <rect x="20" y="250" width="180" height="40" rx="3" fill="#d7ecf9" stroke="#7d8fa3" stroke-width="2"/>
+        <text x="95" y="275" font-size="11" fill="var(--muted)" text-anchor="middle">Reservatório</text>
+        <rect x="70" y="50" width="120" height="170" fill="#f4f9fd" stroke="#7d8fa3" stroke-width="2"/>
+        <rect id="water3" x="72" y="70" width="116" height="148" fill="var(--water)"/>
+        <rect id="heat3" x="72" y="70" width="116" height="148" fill="#e8743b" opacity="0"/>
+        <path id="heater" d="M95 205 q8 -18 16 0 t16 0 t16 0 t16 0 t16 0" fill="none" stroke="#888" stroke-width="5" stroke-linecap="round"/>
+        <text x="130" y="232" font-size="10" fill="var(--muted)" text-anchor="middle">Ebulidores</text>
+        <line x1="160" y1="40" x2="160" y2="180" stroke="#3b4652" stroke-width="3"/><circle cx="160" cy="182" r="4" fill="#3b4652"/>
+        <text x="166" y="46" font-size="9" fill="var(--muted)">DS18B20</text>
+        <!-- enchimento pela parte superior -->
+        <path d="M40 250 V32 H95 V62" fill="none" stroke="#7d8fa3" stroke-width="6"/>
+        <path id="flowT" d="M40 250 V32 H95 V62" fill="none" stroke="var(--water2)" stroke-width="3"/>
+        <g transform="translate(40 190)"><circle r="13" fill="#fff" stroke="#3b4652" stroke-width="2"/><path id="pumpT" d="M-6 6 L0 -7 L6 6 Z" fill="#9aa7b5"/></g>
+        <text x="2" y="168" font-size="10" fill="var(--muted)">Enchimento</text>
+        <!-- esvaziamento pela parte inferior -->
+        <path d="M178 220 V250" fill="none" stroke="#7d8fa3" stroke-width="6"/>
+        <path id="flowD" d="M178 220 V250" fill="none" stroke="var(--water2)" stroke-width="3"/>
+        <g transform="translate(178 236)"><circle r="11" fill="#fff" stroke="#3b4652" stroke-width="2"/><path id="pumpD" d="M-5 -5 L0 6 L5 -5 Z" fill="#9aa7b5"/></g>
+        <text x="176" y="285" font-size="9" fill="var(--muted)" text-anchor="middle">Esvaziamento</text>
+        <!-- termômetro -->
+        <g transform="translate(240 0)">
+          <rect x="-9" y="30" width="18" height="200" rx="9" fill="#fff" stroke="#3b4652" stroke-width="2"/>
+          <circle cy="248" r="18" fill="var(--hot)" stroke="#3b4652" stroke-width="2"/>
+          <rect id="merc" x="-4" y="230" width="8" height="0" fill="var(--hot)"/>
+          <rect x="-4" y="226" width="8" height="12" fill="var(--hot)"/>
+          <g id="scale3" font-size="9" fill="var(--muted)"></g>
+          <path id="sp3" d="M12 0 l10 -6 v12 Z" fill="var(--bad)"/>
+        </g>
+      </svg>
+      <div class="offmsg">SEM COMUNICAÇÃO</div>
+      <div class="readout">
+        <div><span>Temperatura</span><b id="pv3">--</b></div>
+        <div><span>Set point</span><b id="spv3">--</b></div>
+        <div><span>Ebulidores</span><b id="u3">--</b></div>
+      </div>
+    </div>
+  </div>
+  <p class="note">As plantas podem ser ensaiadas uma de cada vez: os escravos sem resposta aparecem como "SEM COMUNICAÇÃO", e o mestre continua o ciclo de consultas normalmente.</p>
+</section>
+
+<!-- ===================== GRÁFICOS ===================== -->
+<section class="tab" id="tab-graf">
+  <div class="row">Janela de tempo:
+    <select id="janela"><option value="120">2 min</option><option value="300">5 min</option><option value="600" selected>10 min</option><option value="1800">30 min</option><option value="0">Tudo</option></select>
+    <span class="note">Linha contínua: variável de processo. Tracejada: set point. Faixa inferior: atuador.</span>
+  </div>
+  <div class="grid" style="grid-template-columns:1fr">
+    <div class="card"><h2>Posição – altura da bola (cm)</h2><div class="chartwrap"><canvas id="ch1"></canvas></div></div>
+    <div class="card"><h2>Nível (cm)</h2><div class="chartwrap"><canvas id="ch2"></canvas></div></div>
+    <div class="card"><h2>Temperatura (°C)</h2><div class="chartwrap"><canvas id="ch3"></canvas></div></div>
+  </div>
+</section>
+
+<!-- ===================== COMANDOS ===================== -->
+<section class="tab" id="tab-cmd">
+  <div class="grid">
+    <div class="card"><h2>Posição – Escravo 1</h2>
+      <div class="row">Set point – altura da bola (cm): <input type="number" id="in1" step="0.5" min="3" max="24"> <button class="btn primary" data-sp="1">Enviar</button></div>
+      <div class="row">Controlador: <button class="btn" data-b="1:1">P</button><button class="btn" data-b="1:2">PI</button><button class="btn" data-b="1:3">PID</button><button class="btn danger" data-b="1:0">Desligar</button></div>
+      <div class="note" id="ack1"></div></div>
+    <div class="card"><h2>Nível – Escravo 2</h2>
+      <div class="row">Set point (cm): <input type="number" id="in2" step="0.5"> <button class="btn primary" data-sp="2">Enviar</button></div>
+      <div class="row">Controlador: <button class="btn" data-b="2:2">PI</button><button class="btn" data-b="2:3">PID</button><button class="btn danger" data-b="2:0">Desligar</button></div>
+      <div class="row note">A vazão de saída é ajustada manualmente na torneira. O ensaio ao degrau (modo manual) é feito pela USB do escravo.</div>
+      <div class="note" id="ack2"></div></div>
+    <div class="card"><h2>Temperatura – Escravo 3</h2>
+      <div class="row">Set point (°C): <input type="number" id="in3" step="0.5" min="20" max="50"> <button class="btn primary" data-sp="3">Enviar</button></div>
+      <div class="row">Bombas: <button class="btn" data-b="3:1">Encher (bomba 1)</button><button class="btn" data-b="3:2">Esvaziar (bomba 2)</button><button class="btn danger" data-b="3:0">Desligar</button></div>
+      <div class="note" id="ack3"></div></div>
+  </div>
+  <p class="note">O comando vai da IHM ao mestre pela USB e do mestre ao escravo pelo RS485, junto com a próxima consulta. A confirmação aparece quando o escravo devolve o novo valor.</p>
+</section>
+
+<!-- ===================== DIAGNÓSTICO ===================== -->
+<section class="tab" id="tab-diag">
+  <div class="card">
+    <h2>Comunicação mestre-escravo</h2>
+    <div class="row">
+      <button class="btn primary" id="btnTeste">Iniciar teste de comunicação (60 s)</button>
+      <button class="btn" id="btnReset">Zerar contadores do mestre</button>
+      <span class="note" id="testeStatus"></span>
+    </div>
+    <table>
+      <thead><tr><th>Escravo</th><th>Situação</th><th>Consultas</th><th>Respostas</th><th>Timeouts</th><th>Erros</th><th>Sucesso</th><th>Último RTT</th></tr></thead>
+      <tbody id="tbStats"></tbody>
+    </table>
+    <div id="relatorio" class="note" style="margin-top:10px;white-space:pre-wrap"></div>
+  </div>
+  <div class="card" style="margin-top:16px">
+    <h2>Mensagens recebidas</h2>
+    <div id="log"></div>
+  </div>
+</section>
+</main>
+
+<script>
+// ============================================================
+// CONFIGURAÇÃO DAS PLANTAS (ajustar faixas conforme a bancada)
+// ============================================================
+const PL = {
+  1:{nome:'Posição',     un:'cm', min:0, max:30, uNome:'Cooler',  fmtU:u=>u+' %'},   // altura do centro da bola (0 = base, 30 = topo)
+  2:{nome:'Nível',       un:'cm', min:0, max:30, uNome:'Bomba',   fmtU:u=>u+' %'},
+  3:{nome:'Temperatura', un:'°C', min:0, max:60, uNome:'Ebulidores', fmtU:u=>u?'LIGADOS':'DESLIGADOS'}
+};
+const TIMEOUT_OFFLINE_MS = 3000;   // sem resposta válida por esse tempo = offline
+
+const estado = {1:{},2:{},3:{}};
+const serie  = {1:[],2:[],3:[]};
+const registros = [];              // dados reais para exportação
+const stats = {};
+let t0 = null, porta = null, escritor = null, simulando = false, simTimer = null;
+const $ = id => document.getElementById(id);
+
+// ---------------- abas ----------------
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('active',x===b));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.id==='tab-'+b.dataset.tab));
+  desenhaGraficos();
+});
+
+// ---------------- escalas fixas ----------------
+function escala(gId, x, y0, y1, min, max, passo, ancora){
+  let h=''; for(let v=min; v<=max+1e-9; v+=passo){
+    const y=y0-(v-min)/(max-min)*(y0-y1);
+    h+=`<line x1="${x}" x2="${x+5}" y1="${y}" y2="${y}" stroke="#9aa7b5"/><text x="${ancora==='end'?x-3:x+8}" y="${y+3}" text-anchor="${ancora||'start'}">${v}</text>`;
+  } $(gId).innerHTML=h;
+}
+escala('scale1',112,250,20,PL[1].min,PL[1].max,5,'end');   // 0 cm na base, 30 cm no topo
+escala('scale2',88,218,42,PL[2].min,PL[2].max,5,'end');
+escala('scale3',10,230,40,PL[3].min,PL[3].max,10,'start');
+
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const map=(v,a,b,c,d)=>c+(clamp(v,a,b)-a)/(b-a)*(d-c);
+const fmt=(v,d=1)=>(v===null||v===undefined||isNaN(v))?'--':Number(v).toFixed(d);
+
+// ---------------- atualização do supervisório ----------------
+function atualizaPlanta(id){
+  const e=estado[id], p=PL[id], on=e.online;
+  $('card'+id).classList.toggle('offline',!on);
+  const bd=$('bd'+id); bd.className='badge '+(on?'on':'off'); bd.textContent='ESCRAVO '+id+(on?' • ONLINE':' • OFFLINE');
+  $('pv'+id).textContent = on? fmt(e.pv, id===3?2:1)+' '+p.un : '--';
+  $('spv'+id).textContent= (e.sp!==undefined)? fmt(e.sp,1)+' '+p.un : '--';
+  $('u'+id).textContent  = (on && e.u!==undefined)? p.fmtU(e.u) : '--';
+  if(id===1){
+    const y=map(e.pv??2.5,p.min,p.max,250,20); $('ball').setAttribute('cy',clamp(y,40,231)); // maior altura = bola mais alta
+    const ys=map(e.sp??0,p.min,p.max,250,20); $('sp1').setAttribute('y1',ys);$('sp1').setAttribute('y2',ys);$('sp1t').setAttribute('y',ys+4);
+    const f=$('fan'); const u=on?(e.u||0):0;
+    f.classList.toggle('spin',u>0); f.style.setProperty('--dur',(u>0?Math.max(0.15,1.2-u/100):1)+'s');
+  }
+  if(id===2){
+    const h=map(e.pv??0,p.min,p.max,0,176); $('water2').setAttribute('y',218-h); $('water2').setAttribute('height',h);
+    const ys=map(e.sp??0,p.min,p.max,218,42); $('sp2').setAttribute('y1',ys);$('sp2').setAttribute('y2',ys);$('sp2t').setAttribute('y',ys+4);
+    const inOn=on&&(e.u||0)>0, outOn=on&&(e.pv||0)>0.2;   // torneira manual: escoa sempre que há água
+    $('flowIn').setAttribute('class',inOn?'flow':''); $('flowIn').style.opacity=inOn?1:0;
+    $('flowOut').setAttribute('class',outOn?'flow':''); $('flowOut').style.opacity=outOn?1:0;
+    $('pumpIn').setAttribute('fill',inOn?'var(--ok)':'#9aa7b5');
+  }
+  if(id===3){
+    const h=map(e.pv??p.min,p.min,p.max,0,190); $('merc').setAttribute('y',230-h); $('merc').setAttribute('height',h);
+    const ys=map(e.sp??p.min,p.min,p.max,230,40); $('sp3').setAttribute('transform',`translate(0 ${ys})`);
+    const k=clamp(((e.pv??25)-20)/30,0,1);
+    $('heat3').setAttribute('opacity',(0.55*k).toFixed(2));   // água "esquenta" de azul para laranja
+    const hot=on&&e.u===1; $('heater').setAttribute('stroke',hot?'var(--hot)':'#888');
+    $('heater').style.filter=hot?'drop-shadow(0 0 4px #e74c3c)':'none';
+    const enche=on&&e.b===1, esvazia=on&&e.b===2;   // bomba 1 (GPIO 32) enche, bomba 2 (GPIO 33) esvazia
+    $('flowT').setAttribute('class',enche?'flow':''); $('flowT').style.opacity=enche?1:0; $('pumpT').setAttribute('fill',enche?'var(--ok)':'#9aa7b5');
+    $('flowD').setAttribute('class',esvazia?'flow':''); $('flowD').style.opacity=esvazia?1:0; $('pumpD').setAttribute('fill',esvazia?'var(--ok)':'#9aa7b5');
+  }
+}
+
+// ---------------- recepção de mensagens do mestre ----------------
+function trataLinha(linha){
+  linha=linha.trim(); if(!linha) return;
+  log(linha);
+  let m; try{ m=JSON.parse(linha); }catch(err){ return; }
+  const agora=performance.now(); if(t0===null) t0=agora;
+  const t=(agora-t0)/1000;
+
+  if(m.stats){ m.stats.forEach(s=>stats[s.id]=s); atualizaStats(); return; }
+  if(m.ack!==undefined){ $('ack'+m.ack).textContent='Comando recebido pelo mestre, aguardando o escravo...'; return; }
+  if(m.id===undefined || !PL[m.id]) return;
+
+  const e=estado[m.id];
+  if(m.ok===1){
+    const spAnt=e.sp, bAnt=e.b;
+    Object.assign(e,{pv:m.pv,sp:m.sp,u:m.u,b:m.b,st:m.st,rtt:m.rtt,ultimo:agora,online:true});
+    serie[m.id].push({t,pv:m.pv,sp:m.sp,u:m.u});
+    if(serie[m.id].length>20000) serie[m.id].shift();
+    if(!simulando) registros.push([t.toFixed(2),m.id,PL[m.id].nome,m.pv,m.sp,m.u,m.b??'',m.st??'',m.rtt??'']);
+    if(e.pend && ((e.pend.sp!==undefined && Math.abs(m.sp-e.pend.sp)<0.01) || (e.pend.b!==undefined && m.b===e.pend.b))){
+      $('ack'+m.id).textContent='Confirmado pelo escravo às '+new Date().toLocaleTimeString(); e.pend=null;
+    }
+  }
+  if(teste.ativo) teste.reg(m);
+  atualizaPlanta(m.id);
+}
+
+function log(l){
+  const el=$('log'); el.textContent+=l+'\n';
+  if(el.textContent.length>40000) el.textContent=el.textContent.slice(-30000);
+  el.scrollTop=el.scrollHeight;
+}
+
+// verifica escravos que pararam de responder
+setInterval(()=>{
+  const agora=performance.now();
+  for(const id of [1,2,3]){
+    const e=estado[id]; const on=e.ultimo && (agora-e.ultimo)<TIMEOUT_OFFLINE_MS;
+    if(e.online!==on){ e.online=on; atualizaPlanta(id); }
+  }
+  atualizaStats();
+},500);
+setInterval(desenhaGraficos,1000);
+
+// ---------------- conexão serial (Web Serial) ----------------
+$('btnCon').onclick=async()=>{
+  if(!('serial' in navigator)){ alertaNaTela('Este navegador não suporta Web Serial. Use o Google Chrome ou o Microsoft Edge.'); return; }
+  if(porta){ await desconecta(); return; }
+  try{
+    porta=await navigator.serial.requestPort();
+    await porta.open({baudRate:115200});
+    escritor=porta.writable.getWriter();
+    setCon(true);
+    leitura();
+  }catch(err){ porta=null; alertaNaTela('Não foi possível conectar: '+err.message); }
+};
+async function leitura(){
+  const dec=new TextDecoderStream(); const fim=porta.readable.pipeTo(dec.writable).catch(()=>{});
+  const leitor=dec.readable.getReader(); let buf='';
+  try{
+    while(true){ const {value,done}=await leitor.read(); if(done) break;
+      buf+=value; let i; while((i=buf.indexOf('\n'))>=0){ trataLinha(buf.slice(0,i)); buf=buf.slice(i+1); } }
+  }catch(err){ log('# erro de leitura: '+err.message); }
+  finally{ leitor.releaseLock(); await fim; }
+  setCon(false);
+}
+async function desconecta(){
+  try{ escritor&&escritor.releaseLock(); await porta.close(); }catch(e){}
+  porta=null; escritor=null; setCon(false);
+}
+function setCon(on){
+  $('dotCon').className='dot '+(on?'on':'off'); $('txtCon').textContent=on?'Conectado ao mestre':'Desconectado';
+  $('btnCon').textContent=on?'Desconectar':'Conectar ao mestre'; $('btnSim').disabled=on;
+}
+async function envia(obj){
+  const txt=JSON.stringify(obj)+'\n'; log('>> '+txt.trim());
+  if(simulando){ sim.comando(obj); return; }
+  if(!escritor){ alertaNaTela('Conecte ao mestre antes de enviar comandos.'); return; }
+  await escritor.write(new TextEncoder().encode(txt));
+}
+function alertaNaTela(msg){ log('# '+msg); $('testeStatus').textContent=msg; const b=document.createElement('div');
+  b.textContent=msg; b.style.cssText='position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#16324f;color:#fff;padding:10px 16px;border-radius:8px;z-index:9';
+  document.body.appendChild(b); setTimeout(()=>b.remove(),4000); }
+
+// ---------------- comandos ----------------
+document.querySelectorAll('[data-sp]').forEach(b=>b.onclick=()=>{
+  const id=+b.dataset.sp, v=parseFloat($('in'+id).value);
+  if(isNaN(v)){ alertaNaTela('Informe um valor de set point.'); return; }
+  estado[id].pend={sp:v}; $('ack'+id).textContent='Enviando...'; envia({id,sp:v});
+});
+document.querySelectorAll('[data-b]').forEach(b=>b.onclick=()=>{
+  const [id,v]=b.dataset.b.split(':').map(Number);
+  estado[id].pend={b:v}; $('ack'+id).textContent='Enviando...'; envia({id,b:v});
+});
+$('btnReset').onclick=()=>envia({cmd:'reset'});
+
+// ---------------- diagnóstico ----------------
+function atualizaStats(){
+  const agora=performance.now();
+  $('tbStats').innerHTML=[1,2,3].map(id=>{
+    const s=stats[id]||{}, e=estado[id];
+    const sucesso=s.env?((s.ok/s.env)*100).toFixed(1)+' %':'--';
+    const sit=e.online?'<span class="badge on">ONLINE</span>':'<span class="badge off">SEM RESPOSTA</span>';
+    return `<tr><td>${id} – ${PL[id].nome}</td><td>${sit}</td><td>${s.env??'--'}</td><td>${s.ok??'--'}</td><td>${s.to??'--'}</td><td>${s.err??'--'}</td><td>${sucesso}</td><td>${s.rtt!==undefined&&s.ok?s.rtt+' ms':'--'}</td></tr>`;
+  }).join('');
+}
+const teste={ativo:false,dados:{},
+  reg(m){ const d=this.dados[m.id]||(this.dados[m.id]={n:0,ok:0,to:0,err:0,rtt:[]}); d.n++;
+    if(m.ok===1){ d.ok++; if(m.rtt!==undefined) d.rtt.push(m.rtt);} else if(m.err==='timeout') d.to++; else d.err++; }
+};
+$('btnTeste').onclick=()=>{
+  if(teste.ativo) return;
+  if(!porta && !simulando){ alertaNaTela('Conecte ao mestre para executar o teste.'); return; }
+  teste.ativo=true; teste.dados={}; const dur=60; let r=dur; $('relatorio').textContent='';
+  $('btnTeste').disabled=true;
+  const tm=setInterval(()=>{ r--; $('testeStatus').textContent=`Teste em andamento: ${r} s`; if(r<=0){ clearInterval(tm); fimTeste(dur);} },1000);
+};
+function fimTeste(dur){
+  teste.ativo=false; $('btnTeste').disabled=false; $('testeStatus').textContent='Teste concluído.';
+  let txt=`RELATÓRIO DO TESTE DE COMUNICAÇÃO (${dur} s) – ${new Date().toLocaleString()}${simulando?'  [MODO DEMONSTRAÇÃO – DADOS SIMULADOS]':''}\n`;
+  for(const id of [1,2,3]){ const d=teste.dados[id]||{n:0,ok:0,to:0,err:0,rtt:[]};
+    const med=d.rtt.length?(d.rtt.reduce((a,b)=>a+b,0)/d.rtt.length).toFixed(1):'--', mx=d.rtt.length?Math.max(...d.rtt):'--';
+    txt+=`Escravo ${id} (${PL[id].nome}): consultas ${d.n}, respostas ${d.ok}, timeouts ${d.to}, erros ${d.err}, sucesso ${d.n?(d.ok/d.n*100).toFixed(1):'--'} %, RTT médio ${med} ms, RTT máx ${mx} ms\n`; }
+  $('relatorio').textContent=txt; log(txt);
+}
+
+// ---------------- gráficos (canvas) ----------------
+function desenhaGraficos(){
+  if(!$('tab-graf').classList.contains('active')) return;
+  const jan=+$('janela').value;
+  for(const id of [1,2,3]) grafico($('ch'+id), serie[id], PL[id], jan, id===3);
+}
+function grafico(cv, dados, p, jan, binario){
+  const dpr=window.devicePixelRatio||1, W=cv.clientWidth, H=cv.clientHeight;
+  cv.width=W*dpr; cv.height=H*dpr; const g=cv.getContext('2d'); g.scale(dpr,dpr);
+  const L=60,R=10,T=10,B=48, HU=22; const ph=H-T-B;
+  g.clearRect(0,0,W,H); g.font='11px Segoe UI, Arial'; g.fillStyle='#6a7685';
+  const tFim=dados.length?dados[dados.length-1].t:0; const tIni=jan?Math.max(0,tFim-jan):(dados.length?dados[0].t:0);
+  const vis=dados.filter(d=>d.t>=tIni);
+  const tMax=Math.max(tIni+10,tFim);
+  const X=t=>L+(t-tIni)/(tMax-tIni)*(W-L-R), Y=v=>T+ph-(clamp(v,p.min,p.max)-p.min)/(p.max-p.min)*ph;
+  g.strokeStyle='#e3e7ec'; g.lineWidth=1;
+  for(let i=0;i<=5;i++){ const v=p.min+i*(p.max-p.min)/5, y=Y(v); g.beginPath(); g.moveTo(L,y); g.lineTo(W-R,y); g.stroke(); g.fillText(v.toFixed(0),6,y+4); }
+  for(let i=0;i<=6;i++){ const t=tIni+i*(tMax-tIni)/6, x=X(t); g.beginPath(); g.moveTo(x,T); g.lineTo(x,T+ph); g.stroke(); g.fillText(t.toFixed(0)+' s',x-12,H-6); }
+  if(!vis.length){ g.fillText('Sem dados',W/2-25,T+ph/2); return; }
+  // SP
+  g.strokeStyle='#c0392b'; g.setLineDash([6,4]); g.lineWidth=1.5; g.beginPath();
+  vis.forEach((d,i)=>{ if(d.sp==null) return; const x=X(d.t), y=Y(d.sp); i?g.lineTo(x,y):g.moveTo(x,y); }); g.stroke(); g.setLineDash([]);
+  // PV
+  g.strokeStyle='#1f5fa8'; g.lineWidth=2; g.beginPath(); let ini=false;
+  vis.forEach(d=>{ if(d.pv==null){ini=false;return;} const x=X(d.t), y=Y(d.pv); ini?g.lineTo(x,y):g.moveTo(x,y); ini=true; }); g.stroke();
+  // atuador
+  const y0=T+ph+6; g.fillStyle='#f6f8fa'; g.fillRect(L,y0,W-L-R,HU-6); g.fillStyle='#e67e22';
+  vis.forEach((d,i)=>{ const n=vis[i+1]; const x=X(d.t), x2=n?X(n.t):x+2; const f=binario?(d.u?1:0):clamp((d.u||0)/100,0,1);
+    if(f>0) g.fillRect(x,y0+(HU-6)*(1-f),Math.max(1,x2-x),(HU-6)*f); });
+  g.fillStyle='#6a7685'; g.font='10px Segoe UI, Arial'; g.fillText(p.uNome,2,y0+26);
+}
+$('janela').onchange=desenhaGraficos; window.addEventListener('resize',desenhaGraficos);
+
+// ---------------- exportação CSV (somente dados reais) ----------------
+$('btnCsv').onclick=()=>{
+  if(simulando){ alertaNaTela('No modo demonstração os dados são simulados e não são exportados.'); return; }
+  if(!registros.length){ alertaNaTela('Ainda não há dados recebidos do mestre.'); return; }
+  const cab='t_s,id,planta,pv,sp,u,b,status,rtt_ms\n';
+  const blob=new Blob([cab+registros.map(r=>r.join(',')).join('\n')],{type:'text/csv'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='ihm_dados_'+new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')+'.csv'; a.click();
+};
+
+// ---------------- modo demonstração (dados fictícios) ----------------
+const sim={ x:{1:{pv:2.5,sp:15,u:0,b:3},2:{pv:5,sp:15,u:0,b:0},3:{pv:28,sp:35,u:0,b:0}}, n:{1:0,2:0,3:0},
+  passo(id){ const s=this.x[id];
+    if(id===1){ s.u=s.b?clamp(75+0.3*(s.sp-s.pv),0,100):0; s.pv+= s.b? 0.06*(s.sp-s.pv)+0.3*(Math.random()-0.5) : 0.5*(2.5-s.pv); }
+    if(id===2){ s.u=clamp(40+12*(s.sp-s.pv),0,100); s.pv+=0.004*s.u-0.06*Math.sqrt(Math.max(s.pv,0)); }
+    if(id===3){ if(s.pv<=s.sp-0.5) s.u=1; else if(s.pv>=s.sp) s.u=0; s.pv+=s.u?0.06:-0.01; }
+    s.pv=clamp(s.pv,PL[id].min,PL[id].max); this.n[id]++;
+    return {id,pv:+s.pv.toFixed(id===3?3:1),sp:s.sp,u:id===3?s.u:Math.round(s.u),b:s.b,st:'OK',ok:1,rtt:4+Math.round(Math.random()*3)};
+  },
+  comando(o){ if(o.cmd) return; const s=this.x[o.id]; if(o.sp!==undefined) s.sp=o.sp; if(o.b!==undefined) s.b=o.b; trataLinha(JSON.stringify({ack:o.id})); }
+};
+$('btnSim').onclick=()=>{
+  simulando=!simulando; document.body.classList.toggle('sim',simulando);
+  $('btnSim').textContent=simulando?'Sair da demonstração':'Modo demonstração (dados simulados)'; $('btnCon').disabled=simulando;
+  $('dotCon').className='dot '+(simulando?'sim':''); $('txtCon').textContent=simulando?'Demonstração (dados simulados)':'Desconectado';
+  if(simulando){ let k=0; simTimer=setInterval(()=>{ k=k%3+1; trataLinha(JSON.stringify(sim.passo(k))); if(k===3 && sim.n[3]%20===0) trataLinha(JSON.stringify({stats:[1,2,3].map(i=>({id:i,env:sim.n[i],ok:sim.n[i],to:0,err:0,rtt:5}))})); },100); }
+  else { clearInterval(simTimer); for(const id of [1,2,3]){ serie[id].length=0; Object.keys(estado[id]).forEach(k=>delete estado[id][k]); atualizaPlanta(id);} t0=null; }
+};
+
+[1,2,3].forEach(atualizaPlanta); atualizaStats();
+</script>
+</body>
+</html>
